@@ -14,7 +14,7 @@ import {
   MoveTaskToBucketInputSchema,
   UpdateTaskInputSchema,
 } from "../schemas/task.js";
-import type { VikunjaTask } from "../types.js";
+import type { VikunjaProjectView, VikunjaTask } from "../types.js";
 import { ResponseFormat } from "../schemas/common.js";
 
 function buildListParams(args: {
@@ -189,6 +189,8 @@ Args:
       title: "Get a task by its per-project identifier",
       description: `Fetch a task by its per-project index (the number in identifiers like '#15'). Useful when you know the project context and the identifier shown in the UI.
 
+Vikunja v1.1.0 does not expose its native /by-index endpoint, so this tool emulates the lookup by walking the project's Kanban view tasks and matching on the 'index' field. Requires the project to have a Kanban view defined; if not, the tool returns an actionable error.
+
 Args:
   - project_id: project the task belongs to
   - index: the integer part of the identifier (15 for '#15')
@@ -199,13 +201,38 @@ Args:
     async (args) => {
       try {
         const parsed = GetTaskByIdentifierInputSchema.parse(args);
-        const task = await client.get<VikunjaTask>(
-          `/projects/${parsed.project_id}/tasks/by-index/${parsed.index}`,
+        const views = await client.get<VikunjaProjectView[]>(
+          `/projects/${parsed.project_id}/views`,
         );
-        return renderResponse(
-          parsed.response_format,
-          detailTask(task),
-          task as unknown as Record<string, unknown>,
+        const kanban = (views ?? []).find((v) => v.view_kind === "kanban");
+        if (!kanban) {
+          return renderError(
+            `vikunja_get_task_by_identifier: project ${parsed.project_id} has no Kanban view, which this tool needs to enumerate all tasks (including completed ones). Create a Kanban view or fall back to vikunja_get_task with the numeric task id.`,
+          );
+        }
+        const PER_PAGE = 50;
+        const MAX_PAGES = 10;
+        for (let page = 1; page <= MAX_PAGES; page++) {
+          const raw = await client.get<unknown>(
+            `/projects/${parsed.project_id}/views/${kanban.id}/tasks`,
+            { page, per_page: PER_PAGE },
+          );
+          const buckets = Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : [];
+          const tasks: VikunjaTask[] = buckets.flatMap(
+            (b) => (b.tasks as VikunjaTask[] | undefined) ?? [],
+          );
+          const found = tasks.find((t) => t.index === parsed.index);
+          if (found) {
+            return renderResponse(
+              parsed.response_format,
+              detailTask(found),
+              found as unknown as Record<string, unknown>,
+            );
+          }
+          if (tasks.length === 0 || tasks.length < PER_PAGE) break;
+        }
+        return renderError(
+          `vikunja_get_task_by_identifier: no task with index ${parsed.index} found in project ${parsed.project_id} (Kanban view ${kanban.id}).`,
         );
       } catch (error) {
         return renderError(handleApiError(error, "vikunja_get_task_by_identifier"));
