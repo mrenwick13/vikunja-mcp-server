@@ -1,0 +1,42 @@
+<evaluation>
+  <qa_pair>
+    <question>In the project that hosts Michael's homelab work, there is a numbered series of six phase tasks created on 2026-02-22 that restores the Surfshark WireGuard VPN on the UDR, stands up a Tailscale exit node, configures split DNS, sets up a subnet router, and ends with end-to-end testing. One of those phases is dedicated to configuring access-control rules between nodes on the tailnet. What is the phase number of that access-control phase? Answer with a single integer.</question>
+    <answer>5</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the homelab project there is a task whose description outlines a remote-first reauthentication recovery workflow and recommends sending a chat alert (with a follow-up confirmation) the moment an integration's token has to be re-authorised while the user is away from a desktop. Which Vikunja username authored this task? Provide the username exactly.</question>
+    <answer>clive</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The homelab project contains a numbered phase plan, starting with architecture and scope and ending with hardening, monitoring and docs, that introduces an identity-provider SSO solution sitting behind the reverse-proxy's forward-auth mechanism. How many numbered phases does the plan contain in total? Answer with a single integer.</question>
+    <answer>5</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the TTM subproject under Work, there is an open performance-testing task asking for a full-volume export load test that the description warns will likely crash the web app. The description names the colleague who requested it. What is their first name? Provide the first name only.</question>
+    <answer>Nicole</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the top-level Work project there is a proposal task suggesting a recurring forum to bridge departments and clear backlog tech-debt items faster. Its description ends with a specific suggested first task that should involve three engineering disciplines. What is the two-word name of that suggested first task? Answer with two lowercase words.</question>
+    <answer>ci pipeline</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the top-level Work project there is a completed task about preparing presentation slides for a leadership development programme. On what calendar date was it marked done? Use YYYY-MM-DD format.</question>
+    <answer>2026-03-03</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>The homelab project has a Kanban view. List that view's buckets in ascending order of their `position` field. What is the title of the bucket that appears last in that ordering? Answer with the bucket's title exactly as stored.</question>
+    <answer>Done</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Does the connected Vikunja instance have two-factor authentication via TOTP enabled, according to its public info endpoint? Answer True or False.</question>
+    <answer>True</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the top-level Personal project (the one that contains the Home Automation, House Jobs and HomeLab projects as sub-projects), there is a closed task about sending a thank-you card to someone named Baxter. What per-project identifier (e.g. "#7") was assigned to this task? Include the leading hash.</question>
+    <answer>#3</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the homelab project, count the tasks whose titles begin with the prefix "Claudia:" (this prefix is used to group a cluster of subtasks for an agent bring-up). Include both open and completed tasks. Answer with a single integer.</question>
+    <answer>21</answer>
+  </qa_pair>
+</evaluation>
