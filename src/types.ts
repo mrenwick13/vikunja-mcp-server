@@ -135,3 +135,12 @@ export interface VikunjaSubscription {
 }
 
 export type SubscriptionEntity = "project" | "task";
+
+export interface VikunjaNotification {
+  id: number;
+  name?: string;
+  notification?: Record<string, unknown>;
+  read?: boolean;
+  read_at?: string;
+  created?: string;
+}

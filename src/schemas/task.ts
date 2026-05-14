@@ -89,6 +89,18 @@ export const GetTaskInputSchema = z
   })
   .strict();
 
+export const GetTaskByIdentifierInputSchema = z
+  .object({
+    project_id: IdSchema.describe("Project the task lives in"),
+    index: z
+      .number()
+      .int()
+      .positive()
+      .describe("Per-project task index. Identifiers like '#15' mean index 15."),
+    response_format: ResponseFormatSchema,
+  })
+  .strict();
+
 export const CreateTaskInputSchema = z
   .object({
     project_id: IdSchema.describe("Project to create the task in"),

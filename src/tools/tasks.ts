@@ -7,6 +7,7 @@ import {
   CompleteTaskInputSchema,
   CreateTaskInputSchema,
   DeleteTaskInputSchema,
+  GetTaskByIdentifierInputSchema,
   GetTaskInputSchema,
   ListProjectTasksInputSchema,
   ListTasksInputSchema,
@@ -178,6 +179,36 @@ Args:
         );
       } catch (error) {
         return renderError(handleApiError(error, "vikunja_get_task"));
+      }
+    },
+  );
+
+  server.registerTool(
+    "vikunja_get_task_by_identifier",
+    {
+      title: "Get a task by its per-project identifier",
+      description: `Fetch a task by its per-project index (the number in identifiers like '#15'). Useful when you know the project context and the identifier shown in the UI.
+
+Args:
+  - project_id: project the task belongs to
+  - index: the integer part of the identifier (15 for '#15')
+  - response_format`,
+      inputSchema: GetTaskByIdentifierInputSchema.shape,
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async (args) => {
+      try {
+        const parsed = GetTaskByIdentifierInputSchema.parse(args);
+        const task = await client.get<VikunjaTask>(
+          `/projects/${parsed.project_id}/tasks/by-index/${parsed.index}`,
+        );
+        return renderResponse(
+          parsed.response_format,
+          detailTask(task),
+          task as unknown as Record<string, unknown>,
+        );
+      } catch (error) {
+        return renderError(handleApiError(error, "vikunja_get_task_by_identifier"));
       }
     },
   );

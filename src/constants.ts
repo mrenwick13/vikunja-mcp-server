@@ -1,5 +1,5 @@
 export const SERVER_NAME = "vikunja-mcp-server";
-export const SERVER_VERSION = "0.2.0";
+export const SERVER_VERSION = "0.3.0";
 
 export const REQUEST_TIMEOUT_MS = 30_000;
 export const CHARACTER_LIMIT = 25_000;

@@ -25,6 +25,8 @@ import { registerCommentTools } from "./tools/comments.js";
 import { registerAssigneeTools } from "./tools/assignees.js";
 import { registerRelationTools } from "./tools/relations.js";
 import { registerSubscriptionTools } from "./tools/subscriptions.js";
+import { registerNotificationTools } from "./tools/notifications.js";
+import { registerWorkflowTools } from "./tools/workflow.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -47,6 +49,8 @@ async function main(): Promise<void> {
   registerAssigneeTools(server, ctx);
   registerRelationTools(server, ctx);
   registerSubscriptionTools(server, ctx);
+  registerNotificationTools(server, ctx);
+  registerWorkflowTools(server, ctx);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
