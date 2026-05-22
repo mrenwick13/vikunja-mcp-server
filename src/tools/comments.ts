@@ -1,6 +1,7 @@
 import { handleApiError } from "../services/errors.js";
 import { buildPaginated, renderError, renderResponse } from "../services/format.js";
 import { summariseComment } from "../services/formatters.js";
+import { descriptionToHtml } from "../services/markdown.js";
 import type { ToolRegistrar } from "../services/registry.js";
 import { ResponseFormat } from "../schemas/common.js";
 import {
@@ -77,9 +78,10 @@ export const registerCommentTools: ToolRegistrar = (server, { client, config }) 
     async (args) => {
       try {
         const parsed = CreateCommentInputSchema.parse(args);
+        const body = descriptionToHtml(parsed.comment) ?? parsed.comment;
         const comment = await client.put<VikunjaTaskComment>(
           `/tasks/${parsed.task_id}/comments`,
-          { comment: parsed.comment },
+          { comment: body },
         );
         return renderResponse(
           parsed.response_format,
@@ -103,9 +105,10 @@ export const registerCommentTools: ToolRegistrar = (server, { client, config }) 
     async (args) => {
       try {
         const parsed = UpdateCommentInputSchema.parse(args);
+        const body = descriptionToHtml(parsed.comment) ?? parsed.comment;
         const comment = await client.post<VikunjaTaskComment>(
           `/tasks/${parsed.task_id}/comments/${parsed.comment_id}`,
-          { id: parsed.comment_id, comment: parsed.comment },
+          { id: parsed.comment_id, comment: body },
         );
         return renderResponse(
           parsed.response_format,

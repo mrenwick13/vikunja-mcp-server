@@ -1,6 +1,7 @@
 import { handleApiError } from "../services/errors.js";
 import { renderError, renderResponse } from "../services/format.js";
 import { detailTask } from "../services/formatters.js";
+import { descriptionToHtml } from "../services/markdown.js";
 import type { ToolRegistrar } from "../services/registry.js";
 import { ProposeTaskInputSchema, SetStatusInputSchema } from "../schemas/workflow.js";
 import type { VikunjaBucket, VikunjaLabel, VikunjaProjectView, VikunjaTask } from "../types.js";
@@ -71,7 +72,7 @@ Returns the created task with labels attached.`,
           }
         }
         const createBody: Record<string, unknown> = { title: parsed.title };
-        if (parsed.description !== undefined) createBody.description = parsed.description;
+        if (parsed.description !== undefined) createBody.description = descriptionToHtml(parsed.description);
         if (parsed.due_date !== undefined) createBody.due_date = parsed.due_date;
         if (parsed.priority !== undefined) createBody.priority = parsed.priority;
         const task = await client.put<VikunjaTask>(`/projects/${parsed.project_id}/tasks`, createBody);

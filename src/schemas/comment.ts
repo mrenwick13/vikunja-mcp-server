@@ -21,7 +21,12 @@ export const GetCommentInputSchema = z
 export const CreateCommentInputSchema = z
   .object({
     task_id: IdSchema,
-    comment: z.string().min(1).describe("Comment text (HTML or plain)"),
+    comment: z
+      .string()
+      .min(1)
+      .describe(
+        "Comment body. Markdown is accepted and auto-converted to HTML before being sent to Vikunja. Raw HTML is also accepted (pass-through).",
+      ),
     response_format: ResponseFormatSchema,
   })
   .strict();
@@ -30,7 +35,12 @@ export const UpdateCommentInputSchema = z
   .object({
     task_id: IdSchema,
     comment_id: IdSchema,
-    comment: z.string().min(1),
+    comment: z
+      .string()
+      .min(1)
+      .describe(
+        "Comment body. Markdown is accepted and auto-converted to HTML before being sent to Vikunja. Raw HTML is also accepted (pass-through).",
+      ),
     response_format: ResponseFormatSchema,
   })
   .strict();

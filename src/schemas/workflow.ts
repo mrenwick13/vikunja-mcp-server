@@ -13,7 +13,12 @@ export const ProposeTaskInputSchema = z
   .object({
     project_id: IdSchema.describe("Project to create the task in"),
     title: z.string().min(1).max(250).describe("Task title"),
-    description: z.string().optional(),
+    description: z
+      .string()
+      .optional()
+      .describe(
+        "Task description. Markdown is accepted and auto-converted to HTML before being sent to Vikunja. Raw HTML is also accepted (pass-through).",
+      ),
     due_date: IsoDateSchema.optional(),
     priority: z
       .number()

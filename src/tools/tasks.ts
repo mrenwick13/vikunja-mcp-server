@@ -1,6 +1,7 @@
 import { handleApiError } from "../services/errors.js";
 import { buildPaginated, renderError, renderResponse } from "../services/format.js";
 import { detailTask, summariseTask } from "../services/formatters.js";
+import { descriptionToHtml } from "../services/markdown.js";
 import type { ToolRegistrar } from "../services/registry.js";
 import {
   BulkUpdateTasksInputSchema,
@@ -252,6 +253,9 @@ Args:
       try {
         const parsed = CreateTaskInputSchema.parse(args);
         const { project_id, response_format, ...rest } = parsed;
+        if (rest.description !== undefined) {
+          rest.description = descriptionToHtml(rest.description);
+        }
         const task = await client.put<VikunjaTask>(`/projects/${project_id}/tasks`, rest);
         return renderResponse(
           response_format,
@@ -280,9 +284,13 @@ Field semantics:
     async (args) => {
       try {
         const parsed = UpdateTaskInputSchema.parse(args);
+        const fields = { ...parsed.fields };
+        if (fields.description !== undefined) {
+          fields.description = descriptionToHtml(fields.description);
+        }
         const task = await client.post<VikunjaTask>(`/tasks/${parsed.id}`, {
           id: parsed.id,
-          ...parsed.fields,
+          ...fields,
         });
         return renderResponse(
           parsed.response_format,
@@ -391,11 +399,15 @@ This calls Vikunja's /tasks/bulk endpoint. The 'fields' object describes which f
     async (args) => {
       try {
         const parsed = BulkUpdateTasksInputSchema.parse(args);
-        const fieldNames = Object.keys(parsed.fields);
+        const fields = { ...parsed.fields };
+        if (fields.description !== undefined) {
+          fields.description = descriptionToHtml(fields.description);
+        }
+        const fieldNames = Object.keys(fields);
         const result = await client.post<unknown>("/tasks/bulk", {
           task_ids: parsed.task_ids,
           fields: fieldNames,
-          values: parsed.fields,
+          values: fields,
         });
         const tasks = Array.isArray(result) ? (result as VikunjaTask[]) : [];
         const summary = tasks.length

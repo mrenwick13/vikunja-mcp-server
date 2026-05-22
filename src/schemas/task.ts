@@ -8,7 +8,12 @@ const IsoDateSchema = z
 
 export const TaskFieldsSchema = z.object({
   title: z.string().min(1).max(250).optional().describe("Task title"),
-  description: z.string().optional().describe("Task description (HTML or plain text)"),
+  description: z
+    .string()
+    .optional()
+    .describe(
+      "Task description. Markdown is accepted and auto-converted to HTML before being sent to Vikunja. Raw HTML is also accepted (pass-through). Use the standard Markdown subset: headings, lists, code, bold/italic, links, blockquotes.",
+    ),
   done: z.boolean().optional().describe("Whether the task is complete"),
   due_date: IsoDateSchema.optional().describe("Due date; pass empty string to clear"),
   start_date: IsoDateSchema.optional(),
@@ -105,7 +110,12 @@ export const CreateTaskInputSchema = z
   .object({
     project_id: IdSchema.describe("Project to create the task in"),
     title: z.string().min(1).max(250).describe("Task title"),
-    description: z.string().optional(),
+    description: z
+      .string()
+      .optional()
+      .describe(
+        "Task description. Markdown is accepted and auto-converted to HTML before being sent to Vikunja. Raw HTML is also accepted (pass-through).",
+      ),
     due_date: IsoDateSchema.optional(),
     start_date: IsoDateSchema.optional(),
     end_date: IsoDateSchema.optional(),
