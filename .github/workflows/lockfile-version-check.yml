@@ -1,0 +1,28 @@
+name: lockfile-version-check
+
+# Guards against the failure mode where package.json's version is bumped without
+# regenerating package-lock.json in the same commit. The stale lockfile lags, and
+# the next `npm install` (e.g. in mcp-setup's bootstrap) rewrites it on disk,
+# leaving a dirty tracked file that blocks `git pull --ff-only`. This check fails
+# the build if the two version fields disagree, so the source never diverges silently.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: package.json and package-lock.json versions must match
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          lock=$(node -p "require('./package-lock.json').version")
+          echo "package.json:      $pkg"
+          echo "package-lock.json: $lock"
+          if [ "$pkg" != "$lock" ]; then
+            echo "::error::Version mismatch. Run 'npm install' (or bump via 'npm version') and commit the regenerated package-lock.json in the same commit."
+            exit 1
+          fi
+          echo "Versions match."
