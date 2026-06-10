@@ -1,3 +1,4 @@
+import type { VikunjaClient } from "../services/api.js";
 import { handleApiError } from "../services/errors.js";
 import { buildPaginated, renderError, renderResponse } from "../services/format.js";
 import { detailTask, summariseTask } from "../services/formatters.js";
@@ -17,6 +18,41 @@ import {
 } from "../schemas/task.js";
 import type { VikunjaProjectView, VikunjaTask } from "../types.js";
 import { ResponseFormat } from "../schemas/common.js";
+
+// Vikunja's POST /tasks/{id} is a full replace: any mutable field missing
+// from the body is reset to its zero value, so a partial update silently
+// wipes description and resets priority. Fetch the task and re-send its
+// current scalar fields underneath the requested changes. bucket_id and
+// position are deliberately excluded — bucket moves carry view side effects
+// and go through vikunja_move_task_to_bucket.
+const TASK_MERGE_FIELDS = [
+  "title",
+  "description",
+  "done",
+  "priority",
+  "percent_done",
+  "due_date",
+  "start_date",
+  "end_date",
+  "repeat_after",
+  "repeat_mode",
+  "hex_color",
+  "is_favorite",
+] as const;
+
+async function mergedUpdateBody(
+  client: VikunjaClient,
+  id: number,
+  overrides: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const current = await client.get<VikunjaTask>(`/tasks/${id}`);
+  const base: Record<string, unknown> = {};
+  for (const field of TASK_MERGE_FIELDS) {
+    const value = (current as unknown as Record<string, unknown>)[field];
+    if (value !== undefined && value !== null) base[field] = value;
+  }
+  return { id, ...base, ...overrides };
+}
 
 function buildListParams(args: {
   page: number;
@@ -288,10 +324,10 @@ Field semantics:
         if (fields.description !== undefined) {
           fields.description = descriptionToHtml(fields.description);
         }
-        const task = await client.post<VikunjaTask>(`/tasks/${parsed.id}`, {
-          id: parsed.id,
-          ...fields,
-        });
+        const task = await client.post<VikunjaTask>(
+          `/tasks/${parsed.id}`,
+          await mergedUpdateBody(client, parsed.id, fields),
+        );
         return renderResponse(
           parsed.response_format,
           `Updated task ${task.id}: ${task.title}`,
@@ -314,10 +350,10 @@ Field semantics:
     async (args) => {
       try {
         const parsed = CompleteTaskInputSchema.parse(args);
-        const task = await client.post<VikunjaTask>(`/tasks/${parsed.id}`, {
-          id: parsed.id,
-          done: parsed.done,
-        });
+        const task = await client.post<VikunjaTask>(
+          `/tasks/${parsed.id}`,
+          await mergedUpdateBody(client, parsed.id, { done: parsed.done }),
+        );
         return renderResponse(
           parsed.response_format,
           `Task ${task.id} marked ${task.done ? "done" : "open"}: ${task.title}`,
