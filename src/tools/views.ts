@@ -105,9 +105,14 @@ export const registerViewTools: ToolRegistrar = (server, { client, config }) => 
     async (args) => {
       try {
         const parsed = UpdateViewInputSchema.parse(args);
+        // Vikunja's view update writes all columns from the incoming struct, so a
+        // partial payload would blank title/kind/bucket config. Fetch-merge-write.
+        const current = await client.get<VikunjaProjectView>(
+          `/projects/${parsed.project_id}/views/${parsed.id}`,
+        );
         const view = await client.post<VikunjaProjectView>(
           `/projects/${parsed.project_id}/views/${parsed.id}`,
-          { id: parsed.id, ...parsed.fields },
+          { ...current, ...parsed.fields, id: parsed.id },
         );
         return renderResponse(
           parsed.response_format,

@@ -81,7 +81,19 @@ Caveat: the 'count' field returned by this endpoint can be stale right after rec
     async (args) => {
       try {
         const parsed = UpdateBucketInputSchema.parse(args);
-        const body: Record<string, unknown> = { id: parsed.bucket_id };
+        // Vikunja's bucket update writes title/limit/position unconditionally from
+        // the incoming struct, so a partial payload would zero the omitted columns.
+        // There is no single-bucket GET, so list the view's buckets and merge.
+        const existing = await client.get<VikunjaBucket[]>(
+          `/projects/${parsed.project_id}/views/${parsed.view_id}/buckets`,
+        );
+        const current = (existing ?? []).find((b) => b.id === parsed.bucket_id);
+        if (!current) {
+          return renderError(
+            `vikunja_update_bucket: bucket ${parsed.bucket_id} not found in view ${parsed.view_id} (project ${parsed.project_id}).`,
+          );
+        }
+        const body: Record<string, unknown> = { ...current, id: parsed.bucket_id };
         if (parsed.title !== undefined) body.title = parsed.title;
         if (parsed.limit !== undefined) body.limit = parsed.limit;
         if (parsed.position !== undefined) body.position = parsed.position;

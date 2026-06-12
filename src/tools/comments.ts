@@ -25,11 +25,11 @@ export const registerCommentTools: ToolRegistrar = (server, { client, config }) 
     async (args) => {
       try {
         const parsed = ListCommentsInputSchema.parse(args);
-        const comments = await client.get<VikunjaTaskComment[]>(
+        const { data: comments, pagination } = await client.getList<VikunjaTaskComment[]>(
           `/tasks/${parsed.task_id}/comments`,
           { page: parsed.page, per_page: parsed.perPage },
         );
-        const paged = buildPaginated(comments ?? [], parsed.page, parsed.perPage, undefined);
+        const paged = buildPaginated(comments ?? [], parsed.page, parsed.perPage, pagination);
         const md = [
           `# Comments on task ${parsed.task_id}`,
           ``,

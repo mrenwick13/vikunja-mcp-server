@@ -34,8 +34,8 @@ Note: Vikunja exposes saved filters as virtual projects with negative IDs. To fi
         };
         if (parsed.search) params.s = parsed.search;
         if (parsed.is_archived !== undefined) params.is_archived = parsed.is_archived;
-        const projects = await client.get<VikunjaProject[]>("/projects", params);
-        const paged = buildPaginated(projects ?? [], parsed.page, parsed.perPage, undefined);
+        const { data: projects, pagination } = await client.getList<VikunjaProject[]>("/projects", params);
+        const paged = buildPaginated(projects ?? [], parsed.page, parsed.perPage, pagination);
         const md = [
           `# Projects`,
           ``,
@@ -108,9 +108,15 @@ Note: Vikunja exposes saved filters as virtual projects with negative IDs. To fi
     async (args) => {
       try {
         const parsed = UpdateProjectInputSchema.parse(args);
+        // Vikunja's UpdateProject writes title, is_archived, identifier, hex_color,
+        // parent_project_id, and position unconditionally from the incoming struct,
+        // so a partial payload would blank or reset the omitted columns. Fetch the
+        // full project and merge the changes in, as the official frontend does.
+        const current = await client.get<VikunjaProject>(`/projects/${parsed.id}`);
         const project = await client.post<VikunjaProject>(`/projects/${parsed.id}`, {
-          id: parsed.id,
+          ...current,
           ...parsed.fields,
+          id: parsed.id,
         });
         return renderResponse(
           parsed.response_format,
@@ -134,7 +140,12 @@ Note: Vikunja exposes saved filters as virtual projects with negative IDs. To fi
     async (args) => {
       try {
         const parsed = ArchiveProjectInputSchema.parse(args);
+        // Fetch-merge-write: a bare {id, is_archived} payload would fail (Title is
+        // required) or blank the columns UpdateProject always writes. See
+        // vikunja_update_project above.
+        const current = await client.get<VikunjaProject>(`/projects/${parsed.id}`);
         const project = await client.post<VikunjaProject>(`/projects/${parsed.id}`, {
+          ...current,
           id: parsed.id,
           is_archived: parsed.archived,
         });

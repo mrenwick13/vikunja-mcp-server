@@ -1,9 +1,10 @@
 import { handleApiError } from "../services/errors.js";
-import { renderError, renderResponse } from "../services/format.js";
+import { normaliseIsoDate, renderError, renderResponse } from "../services/format.js";
 import { detailTask } from "../services/formatters.js";
 import { descriptionToHtml } from "../services/markdown.js";
 import type { ToolRegistrar } from "../services/registry.js";
 import { ProposeTaskInputSchema, SetStatusInputSchema } from "../schemas/workflow.js";
+import { updateTaskMerged } from "./tasks.js";
 import type { VikunjaBucket, VikunjaLabel, VikunjaProjectView, VikunjaTask } from "../types.js";
 
 async function findLabelByTitle(
@@ -73,12 +74,25 @@ Returns the created task with labels attached.`,
         }
         const createBody: Record<string, unknown> = { title: parsed.title };
         if (parsed.description !== undefined) createBody.description = descriptionToHtml(parsed.description);
-        if (parsed.due_date !== undefined) createBody.due_date = parsed.due_date;
+        if (parsed.due_date !== undefined) createBody.due_date = normaliseIsoDate(parsed.due_date);
         if (parsed.priority !== undefined) createBody.priority = parsed.priority;
         const task = await client.put<VikunjaTask>(`/projects/${parsed.project_id}/tasks`, createBody);
         const labels = [label, ...extraLabels];
-        for (const l of labels) {
-          await client.put<unknown>(`/tasks/${task.id}/labels`, { label_id: l.id });
+        const attached: VikunjaLabel[] = [];
+        try {
+          for (const l of labels) {
+            await client.put<unknown>(`/tasks/${task.id}/labels`, { label_id: l.id });
+            attached.push(l);
+          }
+        } catch (error) {
+          // The task exists at this point; surface a partial-success error so the
+          // caller attaches the missing labels instead of re-creating the task.
+          const missing = labels.filter((l) => !attached.includes(l)).map((l) => l.title);
+          return renderError(
+            `vikunja_propose_task: task ${task.id} ('${task.title}') was created but label attach failed: ${handleApiError(error)}. ` +
+              `Attached: ${attached.map((l) => l.title).join(", ") || "none"}. Missing: ${missing.join(", ")}. ` +
+              `Do NOT create the task again; attach the missing label(s) with vikunja_add_label_to_task on task ${task.id}.`,
+          );
         }
         return renderResponse(
           parsed.response_format,
@@ -121,6 +135,11 @@ Args:
             `No Kanban view found on project ${parsed.project_id}. Create a Kanban view first with vikunja_create_view, or pass an explicit view_id.`,
           );
         }
+        if (view.view_kind !== "kanban") {
+          return renderError(
+            `vikunja_set_status: view ${view.id} ('${view.title}') is not a kanban view (kind: ${view.view_kind}). Pass a Kanban view_id, or omit view_id to use the project's first Kanban view.`,
+          );
+        }
         const buckets = await client.get<VikunjaBucket[]>(
           `/projects/${parsed.project_id}/views/${view.id}/buckets`,
         );
@@ -135,6 +154,8 @@ Args:
         }
         let wasDone = false;
         if (parsed.keep_done) {
+          // GET-then-restore is racy if another writer flips the done flag between
+          // these calls; acceptable for this single-user deployment.
           const before = await client.get<VikunjaTask>(`/tasks/${parsed.task_id}`);
           wasDone = !!before.done;
         }
@@ -144,10 +165,7 @@ Args:
         );
         let restored = false;
         if (parsed.keep_done && wasDone && result.task && !result.task.done) {
-          await client.post<VikunjaTask>(`/tasks/${parsed.task_id}`, {
-            id: parsed.task_id,
-            done: true,
-          });
+          await updateTaskMerged(client, parsed.task_id, { done: true });
           restored = true;
         }
         const after = await client.get<VikunjaTask>(`/tasks/${parsed.task_id}`);

@@ -1,8 +1,12 @@
 import { CHARACTER_LIMIT } from "../constants.js";
 import { ResponseFormat } from "../schemas/common.js";
+import type { PaginationInfo } from "./api.js";
 
 export interface PaginatedResponse<T> {
-  total: number;
+  /** Exact total item count; only present when it can be known (last page, or empty result). */
+  total?: number;
+  /** Total pages reported by Vikunja's x-pagination-total-pages header, when available. */
+  total_pages?: number;
   count: number;
   page: number;
   perPage: number;
@@ -15,12 +19,22 @@ export function buildPaginated<T>(
   items: T[],
   page: number,
   perPage: number,
-  total: number | undefined,
+  pagination?: PaginationInfo,
 ): PaginatedResponse<T> {
-  const knownTotal = total ?? items.length + (page - 1) * perPage + (items.length === perPage ? 1 : 0);
-  const has_more = items.length === perPage;
+  const totalPages = pagination?.totalPages;
+  // With the real total-pages header, has_more is exact. Without it, fall back to the
+  // page-fullness heuristic (an exactly-full last page will look like more is available).
+  const has_more = totalPages !== undefined ? page < totalPages : items.length === perPage;
+  // Vikunja reports total pages, not total items, so the exact item total is only
+  // knowable on the last page (or when there are no results). Never fabricate it.
+  let total: number | undefined;
+  if (totalPages !== undefined) {
+    if (totalPages === 0) total = items.length;
+    else if (page === totalPages) total = (page - 1) * perPage + items.length;
+  }
   return {
-    total: knownTotal,
+    ...(total !== undefined ? { total } : {}),
+    ...(totalPages !== undefined ? { total_pages: totalPages } : {}),
     count: items.length,
     page,
     perPage,
@@ -84,21 +98,25 @@ function enforceLimit(result: ToolTextResult): ToolTextResult {
   };
 }
 
-export function formatHexColor(value: string | undefined | null): string {
-  if (!value) return "";
-  const trimmed = value.replace(/^#/, "").trim();
-  return trimmed ? `#${trimmed}` : "";
-}
-
 export function isoOrBlank(value: string | undefined | null): string {
   if (!value) return "";
   if (value.startsWith("0001-01-01")) return "";
   return value;
 }
 
-export function md(strings: TemplateStringsArray, ...values: unknown[]): string {
-  return strings.reduce((acc, str, i) => {
-    const v = i < values.length ? values[i] : "";
-    return acc + str + (v ?? "");
-  }, "");
+/** Vikunja's "zero time". Sending this for a date field explicitly clears it. */
+export const VIKUNJA_ZERO_TIME = "0001-01-01T00:00:00Z";
+
+/**
+ * Normalise an incoming ISO 8601 date into full RFC3339, the only form Vikunja's
+ * parser accepts. Date-only values become midnight UTC; timestamps missing seconds
+ * and/or a zone get ':00' / 'Z' appended. The empty string is the documented
+ * "clear this date" sentinel and maps to Vikunja's zero time.
+ */
+export function normaliseIsoDate(value: string): string {
+  if (value === "") return VIKUNJA_ZERO_TIME;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T00:00:00Z`;
+  const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(:\d{2})?(Z|[+-]\d{2}:\d{2})?$/.exec(value);
+  if (m) return `${m[1]}${m[2] ?? ":00"}${m[3] ?? "Z"}`;
+  return value;
 }

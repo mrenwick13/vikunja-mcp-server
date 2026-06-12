@@ -1,6 +1,11 @@
-import type { VikunjaClient } from "../services/api.js";
 import { handleApiError } from "../services/errors.js";
-import { buildPaginated, renderError, renderResponse } from "../services/format.js";
+import type { PaginationInfo, VikunjaClient } from "../services/api.js";
+import {
+  buildPaginated,
+  normaliseIsoDate,
+  renderError,
+  renderResponse,
+} from "../services/format.js";
 import { detailTask, summariseTask } from "../services/formatters.js";
 import { descriptionToHtml } from "../services/markdown.js";
 import type { ToolRegistrar } from "../services/registry.js";
@@ -76,14 +81,50 @@ function buildListParams(args: {
   return params;
 }
 
+const TASK_DATE_FIELDS = ["due_date", "start_date", "end_date"] as const;
+
+/**
+ * Normalise task date fields to full RFC3339 (Vikunja rejects date-only and
+ * zone-less forms). Empty string becomes Vikunja's zero time, i.e. an explicit clear.
+ */
+function normaliseTaskDates<T extends Record<string, unknown>>(fields: T): T {
+  for (const key of TASK_DATE_FIELDS) {
+    const value = fields[key];
+    if (typeof value === "string") {
+      (fields as Record<string, unknown>)[key] = normaliseIsoDate(value);
+    }
+  }
+  return fields;
+}
+
+/**
+ * Update a task via fetch-merge-write. Vikunja's POST /tasks/{id} writes every
+ * column from the incoming struct, so a partial payload silently wipes
+ * everything not included. Delegates to mergedUpdateBody, which re-sends the
+ * task's current scalar fields underneath the requested changes (bucket_id and
+ * position are deliberately excluded — bucket moves go through
+ * vikunja_move_task_to_bucket).
+ */
+export async function updateTaskMerged(
+  client: VikunjaClient,
+  taskId: number,
+  changes: Record<string, unknown>,
+): Promise<VikunjaTask> {
+  return client.post<VikunjaTask>(
+    `/tasks/${taskId}`,
+    await mergedUpdateBody(client, taskId, changes),
+  );
+}
+
 function renderTaskList(
   tasks: VikunjaTask[],
   page: number,
   perPage: number,
   format: ResponseFormat,
   heading: string,
+  pagination?: PaginationInfo,
 ) {
-  const paged = buildPaginated(tasks, page, perPage, undefined);
+  const paged = buildPaginated(tasks, page, perPage, pagination);
   const md = [
     `# ${heading}`,
     ``,
@@ -116,12 +157,18 @@ Returns paginated list of task objects. Use vikunja_list_project_tasks if you ha
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async (args) => {
-      void config;
       try {
         const parsed = ListTasksInputSchema.parse(args);
         const params = buildListParams(parsed);
-        const tasks = await client.get<VikunjaTask[]>("/tasks/all", params);
-        return renderTaskList(tasks ?? [], parsed.page, parsed.perPage, parsed.response_format, "Tasks (all projects)");
+        const { data: tasks, pagination } = await client.getList<VikunjaTask[]>("/tasks/all", params);
+        return renderTaskList(
+          tasks ?? [],
+          parsed.page,
+          parsed.perPage,
+          parsed.response_format,
+          "Tasks (all projects)",
+          pagination,
+        );
       } catch (error) {
         return renderError(handleApiError(error, "vikunja_list_tasks"));
       }
@@ -150,7 +197,7 @@ Args:
         const path = parsed.view_id
           ? `/projects/${parsed.project_id}/views/${parsed.view_id}/tasks`
           : `/projects/${parsed.project_id}/views/0/tasks`;
-        const raw = await client.get<unknown>(path, params);
+        const { data: raw, pagination } = await client.getList<unknown>(path, params);
         const arr = Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : [];
         const looksLikeBuckets =
           arr.length > 0 &&
@@ -165,23 +212,42 @@ Args:
             limit?: number;
             tasks?: VikunjaTask[];
           }>;
+          // Pagination applies per bucket on Kanban views: a bucket returning a full
+          // page of tasks may have more on later pages. Flag it rather than silently
+          // truncating.
+          const annotated = buckets.map((b) => ({
+            ...b,
+            shown_tasks: b.tasks?.length ?? 0,
+            possibly_truncated: (b.tasks?.length ?? 0) >= parsed.perPage,
+          }));
+          const anyTruncated = annotated.some((b) => b.possibly_truncated);
           const flatTasks: VikunjaTask[] = buckets.flatMap((b) => b.tasks ?? []);
           const md = [
             `# Kanban view ${parsed.view_id ?? "(default)"} — project ${parsed.project_id}`,
             ``,
-            `${flatTasks.length} task(s) across ${buckets.length} bucket(s)`,
+            `${flatTasks.length} task(s) across ${buckets.length} bucket(s) (page ${parsed.page}, perPage ${parsed.perPage} per bucket)`,
+            ...(anyTruncated
+              ? [
+                  ``,
+                  `Note: bucket(s) marked "(full page — more may exist)" returned ${parsed.perPage} tasks; request the next page or raise perPage to see the rest.`,
+                ]
+              : []),
             ``,
-            ...buckets.flatMap((b) => {
-              const header = `## ${b.title} (#${b.id}, ${b.tasks?.length ?? 0} tasks${b.limit ? `, cap ${b.limit}` : ""})`;
+            ...annotated.flatMap((b) => {
+              const truncNote = b.possibly_truncated ? " (full page — more may exist)" : "";
+              const header = `## ${b.title} (#${b.id}, ${b.shown_tasks} tasks shown${b.limit ? `, cap ${b.limit}` : ""})${truncNote}`;
               const rows = (b.tasks ?? []).map((t) => `- ${summariseTask(t)}`);
               return [header, ...(rows.length > 0 ? rows : ["_(empty)_"]), ""];
             }),
           ].join("\n");
           return renderResponse(parsed.response_format, md, {
             shape: "kanban",
-            buckets,
+            page: parsed.page,
+            perPage: parsed.perPage,
+            buckets: annotated,
             tasks: flatTasks,
             count: flatTasks.length,
+            possibly_truncated: anyTruncated,
           } as unknown as Record<string, unknown>);
         }
         return renderTaskList(
@@ -190,6 +256,7 @@ Args:
           parsed.perPage,
           parsed.response_format,
           `Tasks in project ${parsed.project_id}`,
+          pagination,
         );
       } catch (error) {
         return renderError(handleApiError(error, "vikunja_list_project_tasks"));
@@ -249,6 +316,10 @@ Args:
         }
         const PER_PAGE = 50;
         const MAX_PAGES = 10;
+        // Pagination applies per bucket, so exhaustion means every bucket returned
+        // fewer than a full page — comparing the flattened across-bucket count to
+        // PER_PAGE would break too early on multi-bucket projects.
+        let exhausted = false;
         for (let page = 1; page <= MAX_PAGES; page++) {
           const raw = await client.get<unknown>(
             `/projects/${parsed.project_id}/views/${kanban.id}/tasks`,
@@ -266,7 +337,15 @@ Args:
               found as unknown as Record<string, unknown>,
             );
           }
-          if (tasks.length === 0 || tasks.length < PER_PAGE) break;
+          exhausted = buckets.every(
+            (b) => (((b.tasks as VikunjaTask[] | undefined) ?? []).length) < PER_PAGE,
+          );
+          if (exhausted) break;
+        }
+        if (!exhausted) {
+          return renderError(
+            `vikunja_get_task_by_identifier: no task with index ${parsed.index} found within the first ${MAX_PAGES} pages (${PER_PAGE} tasks per bucket per page) of project ${parsed.project_id} (Kanban view ${kanban.id}). The project has more tasks than this tool scanned, so the task may still exist; use vikunja_get_task with the numeric task id instead.`,
+          );
         }
         return renderError(
           `vikunja_get_task_by_identifier: no task with index ${parsed.index} found in project ${parsed.project_id} (Kanban view ${kanban.id}).`,
@@ -292,6 +371,7 @@ Args:
         if (rest.description !== undefined) {
           rest.description = descriptionToHtml(rest.description);
         }
+        normaliseTaskDates(rest);
         const task = await client.put<VikunjaTask>(`/projects/${project_id}/tasks`, rest);
         return renderResponse(
           response_format,
@@ -324,10 +404,8 @@ Field semantics:
         if (fields.description !== undefined) {
           fields.description = descriptionToHtml(fields.description);
         }
-        const task = await client.post<VikunjaTask>(
-          `/tasks/${parsed.id}`,
-          await mergedUpdateBody(client, parsed.id, fields),
-        );
+        normaliseTaskDates(fields);
+        const task = await updateTaskMerged(client, parsed.id, fields);
         return renderResponse(
           parsed.response_format,
           `Updated task ${task.id}: ${task.title}`,
@@ -350,10 +428,7 @@ Field semantics:
     async (args) => {
       try {
         const parsed = CompleteTaskInputSchema.parse(args);
-        const task = await client.post<VikunjaTask>(
-          `/tasks/${parsed.id}`,
-          await mergedUpdateBody(client, parsed.id, { done: parsed.done }),
-        );
+        const task = await updateTaskMerged(client, parsed.id, { done: parsed.done });
         return renderResponse(
           parsed.response_format,
           `Task ${task.id} marked ${task.done ? "done" : "open"}: ${task.title}`,
@@ -387,6 +462,8 @@ The task remains in its project; this changes only its bucket assignment within 
         const parsed = MoveTaskToBucketInputSchema.parse(args);
         let wasDone = false;
         if (parsed.keep_done) {
+          // GET-then-restore is racy if another writer flips the done flag between
+          // these calls; acceptable for this single-user deployment.
           const before = await client.get<VikunjaTask>(`/tasks/${parsed.task_id}`);
           wasDone = !!before.done;
         }
@@ -402,10 +479,7 @@ The task remains in its project; this changes only its bucket assignment within 
         });
         let restored = false;
         if (parsed.keep_done && wasDone && result.task && !result.task.done) {
-          await client.post<VikunjaTask>(`/tasks/${parsed.task_id}`, {
-            id: parsed.task_id,
-            done: true,
-          });
+          await updateTaskMerged(client, parsed.task_id, { done: true });
           restored = true;
         }
         const note = restored
@@ -439,6 +513,7 @@ This calls Vikunja's /tasks/bulk endpoint. The 'fields' object describes which f
         if (fields.description !== undefined) {
           fields.description = descriptionToHtml(fields.description);
         }
+        normaliseTaskDates(fields);
         const fieldNames = Object.keys(fields);
         const result = await client.post<unknown>("/tasks/bulk", {
           task_ids: parsed.task_ids,

@@ -28,11 +28,14 @@ Each notification has an id, a kind ('name' field, e.g. 'task.assigned'), an ent
     async (args) => {
       try {
         const parsed = ListNotificationsInputSchema.parse(args);
-        const notifications = await client.get<VikunjaNotification[]>("/notifications", {
-          page: parsed.page,
-          per_page: parsed.perPage,
-        });
-        const paged = buildPaginated(notifications ?? [], parsed.page, parsed.perPage, undefined);
+        const { data: notifications, pagination } = await client.getList<VikunjaNotification[]>(
+          "/notifications",
+          {
+            page: parsed.page,
+            per_page: parsed.perPage,
+          },
+        );
+        const paged = buildPaginated(notifications ?? [], parsed.page, parsed.perPage, pagination);
         const md = [
           `# Notifications`,
           ``,

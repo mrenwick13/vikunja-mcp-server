@@ -3,6 +3,25 @@ import { Agent } from "node:https";
 import { REQUEST_TIMEOUT_MS, SERVER_NAME, SERVER_VERSION } from "../constants.js";
 import type { ServerConfig } from "./config.js";
 
+/** Real pagination data captured from Vikunja's response headers. */
+export interface PaginationInfo {
+  /** Value of x-pagination-total-pages, when present. */
+  totalPages?: number;
+  /** Value of x-pagination-result-count (items in this page), when present. */
+  resultCount?: number;
+}
+
+export interface ListResult<T> {
+  data: T;
+  pagination: PaginationInfo;
+}
+
+function parseIntHeader(value: unknown): number | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const n = Number.parseInt(String(value), 10);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 export class VikunjaClient {
   private readonly axios: AxiosInstance;
 
@@ -43,6 +62,22 @@ export class VikunjaClient {
 
   get<T>(path: string, params?: Record<string, unknown>): Promise<T> {
     return this.request<T>("GET", path, { params });
+  }
+
+  /**
+   * GET a list endpoint and capture Vikunja's pagination response headers
+   * (x-pagination-total-pages, x-pagination-result-count) alongside the body,
+   * so callers can report real totals instead of guessing from page fullness.
+   */
+  async getList<T>(path: string, params?: Record<string, unknown>): Promise<ListResult<T>> {
+    const response = await this.axios.request<T>({ method: "GET", url: path, params });
+    return {
+      data: response.data,
+      pagination: {
+        totalPages: parseIntHeader(response.headers["x-pagination-total-pages"]),
+        resultCount: parseIntHeader(response.headers["x-pagination-result-count"]),
+      },
+    };
   }
 
   post<T>(path: string, data?: unknown, params?: Record<string, unknown>): Promise<T> {

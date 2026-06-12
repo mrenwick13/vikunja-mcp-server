@@ -21,11 +21,14 @@ export const registerAssigneeTools: ToolRegistrar = (server, { client }) => {
     async (args) => {
       try {
         const parsed = ListAssigneesInputSchema.parse(args);
-        const users = await client.get<VikunjaUser[]>(`/tasks/${parsed.task_id}/assignees`, {
-          page: parsed.page,
-          per_page: parsed.perPage,
-        });
-        const paged = buildPaginated(users ?? [], parsed.page, parsed.perPage, undefined);
+        const { data: users, pagination } = await client.getList<VikunjaUser[]>(
+          `/tasks/${parsed.task_id}/assignees`,
+          {
+            page: parsed.page,
+            per_page: parsed.perPage,
+          },
+        );
+        const paged = buildPaginated(users ?? [], parsed.page, parsed.perPage, pagination);
         const md = [
           `# Assignees on task ${parsed.task_id}`,
           ``,

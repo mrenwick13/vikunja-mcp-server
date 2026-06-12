@@ -1,5 +1,22 @@
+import { createRequire } from "node:module";
+
 export const SERVER_NAME = "vikunja-mcp-server";
-export const SERVER_VERSION = "0.3.1";
+
+// Derive the version from package.json at runtime so it can never drift.
+// (Compiled output lives in dist/, so ../package.json resolves to the package root
+// both from src/ under tsx and from dist/ after build.)
+function readPackageVersion(): string {
+  try {
+    const require = createRequire(import.meta.url);
+    const pkg = require("../package.json") as { version?: string };
+    if (typeof pkg.version === "string" && pkg.version.length > 0) return pkg.version;
+  } catch {
+    // fall through to the static fallback below
+  }
+  return "0.0.0";
+}
+
+export const SERVER_VERSION = readPackageVersion();
 
 export const REQUEST_TIMEOUT_MS = 30_000;
 export const CHARACTER_LIMIT = 25_000;

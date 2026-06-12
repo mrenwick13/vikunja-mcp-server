@@ -29,8 +29,8 @@ export const registerLabelTools: ToolRegistrar = (server, { client, config }) =>
         const parsed = ListLabelsInputSchema.parse(args);
         const params: Record<string, unknown> = { page: parsed.page, per_page: parsed.perPage };
         if (parsed.search) params.s = parsed.search;
-        const labels = await client.get<VikunjaLabel[]>("/labels", params);
-        const paged = buildPaginated(labels ?? [], parsed.page, parsed.perPage, undefined);
+        const { data: labels, pagination } = await client.getList<VikunjaLabel[]>("/labels", params);
+        const paged = buildPaginated(labels ?? [], parsed.page, parsed.perPage, pagination);
         const md = [`# Labels`, ``, `${paged.count} labels`, ``, ...paged.items.map((l) => `- ${summariseLabel(l)}`)].join("\n");
         return renderResponse(parsed.response_format, md, paged as unknown as Record<string, unknown>);
       } catch (error) {
@@ -97,9 +97,14 @@ export const registerLabelTools: ToolRegistrar = (server, { client, config }) =>
     async (args) => {
       try {
         const parsed = UpdateLabelInputSchema.parse(args);
+        // Vikunja's label update writes title/description/hex_color unconditionally
+        // from the incoming struct, so a partial payload would blank the omitted
+        // columns. Fetch-merge-write.
+        const current = await client.get<VikunjaLabel>(`/labels/${parsed.id}`);
         const label = await client.put<VikunjaLabel>(`/labels/${parsed.id}`, {
-          id: parsed.id,
+          ...current,
           ...parsed.fields,
+          id: parsed.id,
         });
         return renderResponse(
           parsed.response_format,
@@ -151,11 +156,14 @@ export const registerLabelTools: ToolRegistrar = (server, { client, config }) =>
     async (args) => {
       try {
         const parsed = ListTaskLabelsInputSchema.parse(args);
-        const labels = await client.get<VikunjaLabel[]>(`/tasks/${parsed.task_id}/labels`, {
-          page: parsed.page,
-          per_page: parsed.perPage,
-        });
-        const paged = buildPaginated(labels ?? [], parsed.page, parsed.perPage, undefined);
+        const { data: labels, pagination } = await client.getList<VikunjaLabel[]>(
+          `/tasks/${parsed.task_id}/labels`,
+          {
+            page: parsed.page,
+            per_page: parsed.perPage,
+          },
+        );
+        const paged = buildPaginated(labels ?? [], parsed.page, parsed.perPage, pagination);
         const md = [
           `# Labels on task ${parsed.task_id}`,
           ``,

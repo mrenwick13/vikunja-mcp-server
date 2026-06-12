@@ -3,8 +3,13 @@ import { IdSchema, PageSchema, PerPageSchema, ResponseFormatSchema } from "./com
 
 const IsoDateSchema = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:\d{2})?)?$/, "Use ISO 8601 date or date-time")
-  .describe("ISO 8601 date or date-time (e.g. 2026-05-20 or 2026-05-20T17:00:00Z)");
+  .regex(
+    /^$|^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:\d{2})?)?$/,
+    "Use ISO 8601 date or date-time, or empty string to clear",
+  )
+  .describe(
+    "ISO 8601 date or date-time (e.g. 2026-05-20 or 2026-05-20T17:00:00Z). Date-only and zone-less forms are normalised to RFC3339 (UTC) server-side. Pass an empty string to clear the date.",
+  );
 
 export const TaskFieldsSchema = z.object({
   title: z.string().min(1).max(250).optional().describe("Task title"),
@@ -16,8 +21,8 @@ export const TaskFieldsSchema = z.object({
     ),
   done: z.boolean().optional().describe("Whether the task is complete"),
   due_date: IsoDateSchema.optional().describe("Due date; pass empty string to clear"),
-  start_date: IsoDateSchema.optional(),
-  end_date: IsoDateSchema.optional(),
+  start_date: IsoDateSchema.optional().describe("Start date; pass empty string to clear"),
+  end_date: IsoDateSchema.optional().describe("End date; pass empty string to clear"),
   priority: z
     .number()
     .int()
@@ -39,7 +44,7 @@ export const TaskFieldsSchema = z.object({
     .describe(
       "Kanban bucket ID. Use vikunja_move_task_to_bucket for the dedicated move endpoint; this field is honoured by the generic update too.",
     ),
-  repeat_after: z.number().int().min(0).optional(),
+  repeat_after: z.number().int().min(0).optional().describe("Repeat interval in seconds"),
   repeat_mode: z
     .number()
     .int()

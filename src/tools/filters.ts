@@ -77,9 +77,13 @@ The 'filters' object holds:
     async (args) => {
       try {
         const parsed = UpdateFilterInputSchema.parse(args);
+        // Vikunja's saved-filter update writes all columns from the incoming struct,
+        // so a partial payload would blank title/description/filters. Fetch-merge-write.
+        const current = await client.get<VikunjaSavedFilter>(`/filters/${parsed.id}`);
         const filter = await client.post<VikunjaSavedFilter>(`/filters/${parsed.id}`, {
-          id: parsed.id,
+          ...current,
           ...parsed.fields,
+          id: parsed.id,
         });
         return renderResponse(
           parsed.response_format,

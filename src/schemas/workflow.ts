@@ -4,10 +4,12 @@ import { IdSchema, ResponseFormatSchema } from "./common.js";
 const IsoDateSchema = z
   .string()
   .regex(
-    /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:\d{2})?)?$/,
-    "Use ISO 8601 date or date-time",
+    /^$|^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:\d{2})?)?$/,
+    "Use ISO 8601 date or date-time, or empty string to clear",
   )
-  .describe("ISO 8601 date or date-time");
+  .describe(
+    "ISO 8601 date or date-time. Date-only and zone-less forms are normalised to RFC3339 (UTC) server-side. Empty string clears the date.",
+  );
 
 export const ProposeTaskInputSchema = z
   .object({
