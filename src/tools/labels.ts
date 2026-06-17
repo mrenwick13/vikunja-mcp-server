@@ -235,13 +235,34 @@ export const registerLabelTools: ToolRegistrar = (server, { client, config }) =>
     async (args) => {
       try {
         const parsed = SetTaskLabelsInputSchema.parse(args);
-        const result = await client.post<unknown>(`/tasks/${parsed.task_id}/labels/bulk`, {
-          labels: parsed.label_ids.map((id) => ({ id })),
-        });
+        // Vikunja's bulk endpoint (POST /tasks/:id/labels/bulk) is not reachable with
+        // API-token auth — it returns 401 (code 11) even with a valid token, because the
+        // bulk route is not in the API-token permitted set (it expects an interactive JWT).
+        // The single add/remove label routes ARE permitted, so emulate "replace" by
+        // diffing the current label set and applying the difference via those routes.
+        const desired = new Set(parsed.label_ids);
+        const { data: current } = await client.getList<VikunjaLabel[]>(
+          `/tasks/${parsed.task_id}/labels`,
+          { page: 1, per_page: 50 },
+        );
+        const currentIds = new Set((current ?? []).map((l) => l.id));
+        const toAdd = parsed.label_ids.filter((id) => !currentIds.has(id));
+        const toRemove = [...currentIds].filter((id) => !desired.has(id));
+        for (const id of toAdd) {
+          await client.put<VikunjaLabel>(`/tasks/${parsed.task_id}/labels`, { label_id: id });
+        }
+        for (const id of toRemove) {
+          await client.delete(`/tasks/${parsed.task_id}/labels/${id}`);
+        }
         return renderResponse(
           parsed.response_format,
-          `Set ${parsed.label_ids.length} label(s) on task ${parsed.task_id}.`,
-          { task_id: parsed.task_id, label_ids: parsed.label_ids, result } as unknown as Record<string, unknown>,
+          `Set ${parsed.label_ids.length} label(s) on task ${parsed.task_id} (added ${toAdd.length}, removed ${toRemove.length}).`,
+          {
+            task_id: parsed.task_id,
+            label_ids: parsed.label_ids,
+            added: toAdd,
+            removed: toRemove,
+          } as unknown as Record<string, unknown>,
         );
       } catch (error) {
         return renderError(handleApiError(error, "vikunja_set_task_labels"));
