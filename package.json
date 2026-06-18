@@ -1,6 +1,6 @@
 {
   "name": "@mrenwick13/vikunja-mcp-server",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Model Context Protocol server for Vikunja task management with full coverage of tasks, projects, views, buckets, labels, filters, comments, assignees, relations, and subscriptions.",
   "type": "module",
   "main": "dist/index.js",

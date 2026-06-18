@@ -160,7 +160,9 @@ Returns paginated list of task objects. Use vikunja_list_project_tasks if you ha
       try {
         const parsed = ListTasksInputSchema.parse(args);
         const params = buildListParams(parsed);
-        const { data: tasks, pagination } = await client.getList<VikunjaTask[]>("/tasks/all", params);
+        // Vikunja v2.x serves the global cross-project list at GET /tasks.
+        // The legacy /tasks/all route returns 400 "Invalid model provided" (code 2004).
+        const { data: tasks, pagination } = await client.getList<VikunjaTask[]>("/tasks", params);
         return renderTaskList(
           tasks ?? [],
           parsed.page,
