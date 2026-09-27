@@ -29,7 +29,9 @@ import { ResponseFormat } from "../schemas/common.js";
 // wipes description and resets priority. Fetch the task and re-send its
 // current scalar fields underneath the requested changes. bucket_id and
 // position are deliberately excluded — bucket moves carry view side effects
-// and go through vikunja_move_task_to_bucket.
+// and go through vikunja_move_task_to_bucket. Assignees are re-sent too:
+// Vikunja syncs them to whatever the body carries, so omitting them unassigns
+// everyone. Labels live on their own endpoint and are untouched by this POST.
 const TASK_MERGE_FIELDS = [
   "title",
   "description",
@@ -45,7 +47,7 @@ const TASK_MERGE_FIELDS = [
   "is_favorite",
 ] as const;
 
-async function mergedUpdateBody(
+export async function mergedUpdateBody(
   client: VikunjaClient,
   id: number,
   overrides: Record<string, unknown>,
@@ -55,6 +57,9 @@ async function mergedUpdateBody(
   for (const field of TASK_MERGE_FIELDS) {
     const value = (current as unknown as Record<string, unknown>)[field];
     if (value !== undefined && value !== null) base[field] = value;
+  }
+  if (current.assignees && current.assignees.length > 0) {
+    base.assignees = current.assignees;
   }
   return { id, ...base, ...overrides };
 }
